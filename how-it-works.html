@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How a server detects curl | bash — Just Say No</title>
+  <meta name="description" content="The technical explanation: how an HTTP server can detect that its response is being piped into bash, and serve malicious content only some of the time, only to shells.">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='7' fill='%23d4242c'/><rect x='2.5' y='6.5' width='11' height='3' fill='white' transform='rotate(45 8 8)'/></svg>">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <div class="tape" role="presentation"></div>
+
+  <nav class="subnav">
+    <div class="wrap">
+      <a class="home" href="index.html">← Just Say No</a>
+      <a href="#detect">Detection</a>
+      <a href="#probabilistic">The 1% attack</a>
+      <a href="#defense">Defending yourself</a>
+      <a href="#sources">Sources</a>
+    </div>
+  </nav>
+
+  <header class="hero" style="padding-bottom:24px">
+    <div class="wrap">
+      <h1 style="font-size:clamp(2rem,6vw,3.4rem)">How the server knows<br>you're piping to bash</h1>
+      <p class="subtitle" style="max-width:52ch">
+        The claim that "a server can serve you something different when you
+        <code>curl | bash</code>" sounds like paranoia. It's a documented technique.
+        Here's the mechanism.
+      </p>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- ============================ THE INTUITION ============================ -->
+    <section>
+      <div class="wrap">
+        <h2><span class="num">00</span>The intuition</h2>
+        <p class="lead">
+          When you save a file, your computer reads the whole response as fast as
+          the network allows. When you pipe into bash, <strong>bash starts
+          executing the script while it's still downloading</strong> — and that
+          changes the <em>timing</em> of how fast your machine pulls bytes off the
+          wire. The server can watch that timing.
+        </p>
+        <p>
+          The difference is observable from the server's side because of how
+          pipes and TCP flow control work. Let's walk through it.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================ DETECTION ============================ -->
+    <section id="detect">
+      <div class="wrap">
+        <h2><span class="num">01</span>The timing side-channel</h2>
+
+        <h3>What happens when you save to a file</h3>
+        <p>
+          <code>curl https://… -o install.sh</code> (or piping into <code>cat</code>,
+          or a browser download) reads the response body continuously and dumps it
+          to disk. Nothing inspects the bytes; nothing pauses. From the server's
+          point of view, the client drains the connection at line speed and goes
+          quiet only when it's done.
+        </p>
+
+        <h3>What happens when you pipe into bash</h3>
+        <p>
+          <code>curl … | bash</code> connects curl's stdout to bash's stdin through
+          an OS pipe. Bash doesn't wait for end-of-file; it reads and
+          <strong>executes commands as soon as it has a complete line.</strong> If
+          one of those early commands blocks — say it runs <code>sleep 5</code>, or
+          waits on the network, or just does real work — then bash stops reading
+          from the pipe while it's busy.
+        </p>
+        <p>
+          The pipe between curl and bash has a fixed buffer (on Linux, classically
+          64&nbsp;KiB). Once bash stops draining it and the buffer fills,
+          <strong>curl's <code>write()</code> blocks.</strong> Curl then stops
+          reading from the TCP socket; the kernel's receive buffer fills; TCP flow
+          control kicks in and the receive window shrinks to zero; and the
+          <strong>server's <code>send()</code> blocks too.</strong> The stall
+          propagates all the way back to the server.
+        </p>
+
+        <div class="callout danger">
+          <strong>The tell</strong><br>
+          The server, sending the script in chunks, simply measures how long it
+          takes for the client to accept the next chunk. A continuous drain looks
+          like a file download. A <em>pause</em> at the exact point where an early
+          command would have executed is the fingerprint of a live shell on the
+          other end.
+        </div>
+
+        <h3>Making the pause reliable</h3>
+        <p>
+          The original proof-of-concept makes this deterministic. The server sends
+          a first block that is padded — typically with a long bash comment — so
+          it's large enough to fill the pipe and socket buffers, followed by a
+          command that deliberately blocks (e.g. a <code>sleep</code>). Then the
+          server tries to send the next block and times how long that
+          <code>send()</code> takes to complete:
+        </p>
+
+        <div class="term">
+          <div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>server-side logic (pseudocode)</span></div>
+          <pre><span class="cmt"># 1. Send a block big enough to fill the ~64 KiB pipe + socket buffers,</span>
+<span class="cmt">#    ending in a command that blocks for a beat.</span>
+send(padding_comment + "sleep 0.4\n")
+
+<span class="cmt"># 2. Time how long it takes the client to accept the *next* byte.</span>
+t0 = now()
+send(next_chunk)            <span class="cmt"># blocks if the client stopped reading</span>
+elapsed = now() - t0
+
+<span class="warn">if elapsed &gt; threshold:</span>
+    <span class="bad">serve_malicious_payload()</span>   <span class="cmt"># a shell is executing us right now</span>
+<span class="ok">else:</span>
+    <span class="ok">serve_benign_payload()</span>      <span class="cmt"># probably a download / browser / curl -o</span></pre>
+        </div>
+
+        <p>
+          If the client is bash, it executed the <code>sleep</code>, stopped
+          reading, and the server's next <code>send()</code> hangs for ~0.4s — a
+          giant, unambiguous signal. If the client is saving to a file, there's no
+          pause, and the server happily serves the clean version. The reviewer who
+          opened the URL in a browser, the security team that ran
+          <code>curl -o</code>, the mirror that cached it — all of them see
+          innocent code. Only the shells get the payload.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================ PROBABILISTIC ============================ -->
+    <section id="probabilistic">
+      <div class="wrap">
+        <h2><span class="num">02</span>The 1% attack</h2>
+        <p class="lead">
+          Detection is only half of it. The server also controls <em>how often</em>
+          it misbehaves — and that's what makes this genuinely scary.
+        </p>
+        <p>
+          A response doesn't have to be the same twice. A malicious endpoint can:
+        </p>
+        <ul class="crosses">
+          <li>Serve the <strong>real, working installer</strong> to everyone — so the software installs fine and nobody's suspicious.</li>
+          <li>Add the malicious payload <strong>only when it detects a live shell</strong> (per above), so anyone inspecting via download or browser sees nothing.</li>
+          <li>Do it to <strong>only a small fraction</strong> of piped requests — 1%, 0.1% — low enough that it rarely shows up in bug reports, and any single victim looks like a fluke.</li>
+          <li>Key off <strong>IP, geography, time, or User-Agent</strong> to target specific victims and stay dark for researchers and CI.</li>
+        </ul>
+
+        <div class="callout danger">
+          <strong>Why this beats "just read it once"</strong><br>
+          Reproducing the attack requires hitting the exact conditions the server
+          is watching for — a real shell, the right slice of the dice, maybe the
+          right IP — at the right moment. The clean version you inspected is not
+          evidence about the version that ran. And because nothing was saved,
+          there's no artifact to compare against afterward.
+        </div>
+
+        <p>
+          Compare this to a package registry, where a published version is an
+          immutable, content-addressed artifact: everyone who installs
+          <code>foo@1.2.3</code> gets the same bytes, those bytes can be re-fetched
+          and audited later, and if they turn out to be malicious the registry can
+          yank them. A live HTTP endpoint offers none of that by construction.
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================ DEFENSE ============================ -->
+    <section id="defense">
+      <div class="wrap">
+        <h2><span class="num">03</span>Defending yourself</h2>
+        <p>
+          Every defense here works by <strong>removing the live shell from the
+          download</strong>, so the server can't distinguish you from an ordinary
+          file fetch — and by <strong>keeping the bytes</strong>, so you have
+          something to inspect and compare.
+        </p>
+
+        <div class="term">
+          <div class="bar"><i class="r"></i><i class="y"></i><i class="g"></i><span>the safe ritual</span>
+            <button class="copy" data-copy="curl -fsSL https://example.com/install.sh -o install.sh&#10;sha256sum install.sh    # compare to a published checksum&#10;less install.sh         # read it&#10;sh install.sh           # run the exact bytes you inspected">copy</button>
+          </div>
+          <pre><span class="prompt">$</span> <span class="cmd">curl -fsSL https://example.com/install.sh -o install.sh</span>
+<span class="prompt">$</span> <span class="cmd">sha256sum install.sh</span>    <span class="cmt"># compare to a published checksum</span>
+<span class="prompt">$</span> <span class="cmd">less install.sh</span>         <span class="cmt"># read it</span>
+<span class="prompt">$</span> <span class="cmd">sh install.sh</span>           <span class="ok"># run the exact bytes you inspected</span></pre>
+        </div>
+
+        <ul class="checks">
+          <li><strong>Download, then run a file.</strong> The server sees a plain download with no telltale pause.</li>
+          <li><strong>Keep the artifact.</strong> You can re-read it, diff it, and prove what you ran.</li>
+          <li><strong>Verify a checksum</strong> when the project publishes one — tampering becomes obvious.</li>
+          <li><strong>Prefer a package manager</strong> with immutable, signed, mirrored artifacts whenever possible.</li>
+        </ul>
+
+        <p style="margin-top:1.5em">
+          <a class="btn" href="index.html#paths">Back to the user &amp; distributor guides</a>
+        </p>
+      </div>
+    </section>
+
+    <!-- ============================ SOURCES ============================ -->
+    <section id="sources">
+      <div class="wrap">
+        <h2><span class="num">04</span>Sources &amp; further reading</h2>
+        <ul>
+          <li>
+            <strong>"Detecting the use of <code>curl | bash</code> server side"</strong>
+            — idontplaydarts.com (2016). The original write-up of the timing
+            side-channel and the pipe-buffer padding technique. The original site
+            is offline; an archived copy is available via the
+            <a href="https://web.archive.org/web/20250622061208/http://idontplaydarts.com/2016/04/detecting-curl-pipe-bash-server-side/">Wayback Machine</a>.
+          </li>
+          <li>
+            Background on how Unix pipe buffering and TCP flow control combine to
+            propagate a reader's stall back to the sender — see your platform's
+            <code>pipe(7)</code> manual page and any standard treatment of TCP
+            receive-window flow control.
+          </li>
+        </ul>
+        <div class="callout">
+          <strong>Accuracy note</strong><br>
+          The detection technique is a well-documented proof of concept; exact
+          buffer sizes and thresholds depend on the OS, kernel version, and
+          network path. If you're presenting this in a high-stakes setting, cite
+          the primary source above and verify the specifics on your target
+          platform.
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p class="fine">
+        <a href="index.html">← Back to Just Say No to <code style="color:inherit">curl | bash</code></a>
+        &nbsp;•&nbsp; MIT-licensed &nbsp;•&nbsp; Informational; verify
+        platform-specific details against primary sources.
+      </p>
+    </div>
+  </footer>
+
+  <script src="assets/js/main.js" defer></script>
+</body>
+</html>
